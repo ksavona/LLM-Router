@@ -6,9 +6,7 @@ from dataclasses import asdict
 import getpass
 import os
 from pathlib import Path
-import random
 import shutil
-import string
 import subprocess
 import webbrowser
 
@@ -448,23 +446,27 @@ def _openai_codex_reauth_flow(endpoint: ProviderEndpoint) -> None:
     if _command_exists("codex"):
         print("Launching Codex CLI auth flow...\n")
         try:
-            subprocess.run(["codex", "auth", "login"], check=False)
+            result = subprocess.run(["codex", "auth", "login"], check=False)
         except Exception:
-            pass
-        if provider_api_key(endpoint):
+            result = None
+
+        if result is not None and result.returncode == 0:
             _pause_message("OpenAI Codex auth detected. Press Enter to continue.")
             return
+        _pause_message("Codex CLI login did not complete successfully. Press Enter for fallback options.")
+    else:
+        _pause_message("Codex CLI is not installed, so device-code login cannot be generated here. Press Enter for fallback options.")
 
-    device_url = "https://auth.openai.com/codex/device"
-    code = _generate_device_code()
-    print("To continue, follow these steps:\n")
-    print("  1. Open this URL in your browser:")
-    print(f"     {device_url}\n")
-    print("  2. Enter this code:")
-    print(f"     {code}\n")
-    webbrowser.open(device_url)
-    print("Waiting for sign-in... (press Ctrl+C to cancel)")
-    entered = getpass.getpass("\nPaste OPENAI_API_KEY after sign-in (optional): ").strip()
+    print("Fallback options:")
+    print("  1. Open OpenAI API keys page")
+    print("  2. Paste OPENAI_API_KEY manually")
+    print("  3. Cancel")
+    choice = input("\n  Choice [1/2/3]: ").strip()
+    if choice == "1":
+        webbrowser.open("https://platform.openai.com/api-keys")
+    if choice not in {"1", "2"}:
+        return
+    entered = getpass.getpass("\nPaste OPENAI_API_KEY (optional): ").strip()
     if entered:
         endpoint.api_key = entered
 
@@ -496,12 +498,6 @@ def _github_copilot_reauth_flow(endpoint: ProviderEndpoint) -> None:
 
 def _command_exists(command: str) -> bool:
     return shutil.which(command) is not None
-
-
-def _generate_device_code() -> str:
-    part_a = "".join(random.choice(string.ascii_uppercase) for _ in range(4))
-    part_b = "".join(random.choice(string.ascii_uppercase + string.digits) for _ in range(5))
-    return f"{part_a}-{part_b}"
 
 
 def _runtime_ready(settings) -> bool:
