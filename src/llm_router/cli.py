@@ -6,6 +6,10 @@ from dataclasses import asdict
 import getpass
 import os
 from pathlib import Path
+import random
+import shutil
+import string
+import subprocess
 import webbrowser
 
 import httpx
@@ -272,7 +276,7 @@ def _edit_provider_menu(provider: ProviderEndpoint) -> None:
             if entered is not None:
                 provider.api_key = entered or None
         elif choice == 5:
-            _pause_message("Resolved auth is informational only. Press Enter to continue.")
+            _provider_credentials_wizard(_provider_profile_from_endpoint(provider), provider)
         elif choice == 6:
             _provider_auth_shortcuts_menu(provider)
 
@@ -399,16 +403,10 @@ def _provider_credentials_wizard(profile: dict[str, str | None], endpoint: Provi
         if choice == "1":
             return
         if choice == "2":
-            if endpoint.auth_url:
-                webbrowser.open(endpoint.auth_url)
             if provider_id == "openai_codex":
-                entered = getpass.getpass("Paste OPENAI_API_KEY (optional, Enter to skip): ").strip()
-                if entered:
-                    endpoint.api_key = entered
+                _openai_codex_reauth_flow(endpoint)
             else:
-                entered = getpass.getpass("Paste GITHUB_TOKEN (optional, Enter to skip): ").strip()
-                if entered:
-                    endpoint.api_key = entered
+                _github_copilot_reauth_flow(endpoint)
             return
         return
 
@@ -425,6 +423,85 @@ def _provider_credentials_wizard(profile: dict[str, str | None], endpoint: Provi
         if endpoint.auth_url:
             webbrowser.open(endpoint.auth_url)
             _pause_message("Browser opened for sign in. Press Enter when done.")
+
+
+def _provider_profile_from_endpoint(endpoint: ProviderEndpoint) -> dict[str, str | None]:
+    display_name = str((endpoint.metadata or {}).get("display_name") or endpoint.id)
+    return {
+        "name": display_name,
+        "id": endpoint.id,
+        "kind": endpoint.kind,
+        "base_url": endpoint.base_url,
+        "api_key_env": endpoint.api_key_env,
+        "auth_mode": endpoint.auth_mode,
+        "auth_url": endpoint.auth_url,
+        "default_model": endpoint.default_model,
+    }
+
+
+def _openai_codex_reauth_flow(endpoint: ProviderEndpoint) -> None:
+    _clear_screen()
+    print("Starting a fresh OpenAI Codex login...\n")
+    print("Signing in to OpenAI Codex...")
+    print("(LLM Router creates its own session - won't affect Codex CLI or VS Code)\n")
+
+    if _command_exists("codex"):
+        print("Launching Codex CLI auth flow...\n")
+        try:
+            subprocess.run(["codex", "auth", "login"], check=False)
+        except Exception:
+            pass
+        if provider_api_key(endpoint):
+            _pause_message("OpenAI Codex auth detected. Press Enter to continue.")
+            return
+
+    device_url = "https://auth.openai.com/codex/device"
+    code = _generate_device_code()
+    print("To continue, follow these steps:\n")
+    print("  1. Open this URL in your browser:")
+    print(f"     {device_url}\n")
+    print("  2. Enter this code:")
+    print(f"     {code}\n")
+    webbrowser.open(device_url)
+    print("Waiting for sign-in... (press Ctrl+C to cancel)")
+    entered = getpass.getpass("\nPaste OPENAI_API_KEY after sign-in (optional): ").strip()
+    if entered:
+        endpoint.api_key = entered
+
+
+def _github_copilot_reauth_flow(endpoint: ProviderEndpoint) -> None:
+    _clear_screen()
+    print("Starting a fresh GitHub Copilot login...\n")
+    print("Signing in to GitHub Copilot...")
+    print("(LLM Router creates its own session - won't affect VS Code sign-in)\n")
+
+    if _command_exists("gh"):
+        print("Launching GitHub CLI auth flow in browser...\n")
+        try:
+            subprocess.run(["gh", "auth", "login", "-w"], check=False)
+        except Exception:
+            pass
+        if provider_api_key(endpoint):
+            _pause_message("GitHub auth detected via gh auth token. Press Enter to continue.")
+            return
+
+    token_url = "https://github.com/settings/tokens"
+    print("Open this URL to create or review your token:")
+    print(f"  {token_url}\n")
+    webbrowser.open(token_url)
+    entered = getpass.getpass("Paste GITHUB_TOKEN (optional): ").strip()
+    if entered:
+        endpoint.api_key = entered
+
+
+def _command_exists(command: str) -> bool:
+    return shutil.which(command) is not None
+
+
+def _generate_device_code() -> str:
+    part_a = "".join(random.choice(string.ascii_uppercase) for _ in range(4))
+    part_b = "".join(random.choice(string.ascii_uppercase + string.digits) for _ in range(5))
+    return f"{part_a}-{part_b}"
 
 
 def _runtime_ready(settings) -> bool:
