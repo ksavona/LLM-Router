@@ -1,31 +1,22 @@
-Hermes Smart Router Free Use No-Resale License 1.0
+LLM Router Source-Available License Notice
 
-Copyright (c) 2026 Hermes Smart Router Contributors
+Copyright (c) 2026 Kristian Savona Ventura
 
-Permission is granted, free of charge, to any person obtaining a copy of this
-software and associated documentation files (the "Software") to use, copy,
-modify, publish, distribute, and deploy the Software, subject to the
-conditions below.
+LLM Router is source-available.
 
-1. You may use the Software for personal, educational, internal business,
-	research, and community purposes.
-2. You may copy, modify, and redistribute the Software, including modified
-	versions, provided that:
-	a. this license is included with all copies or substantial portions of the
-		Software; and
-	b. recipients receive the Software at no charge.
-3. You may not sell the Software.
-4. You may not charge a license fee, subscription fee, access fee, hosting fee,
-	support fee, consulting fee, or any other fee where the primary value being
-	sold is access to, use of, redistribution of, or monetization of the
-	Software itself.
-5. You may not sublicense the Software under terms that permit sale of the
-	Software.
-6. Any exception to the no-resale rule requires prior written permission from
-	the copyright holder.
+Personal, educational, research, and non-commercial use is allowed under the
+PolyForm Noncommercial License 1.0.0.
 
-For clarity, this license is intended to keep Hermes Smart Router free for the
-community while prohibiting sale of the code or sale of access to the code.
+Commercial use requires a paid commercial license from the author.
+
+Commercial use includes use by companies, consultants, agencies, SaaS
+providers, managed service providers, or any revenue-generating product or
+service.
+
+For commercial licensing, contact Kristian Savona Ventura.
+
+PolyForm Noncommercial License 1.0.0:
+https://polyformproject.org/licenses/noncommercial/1.0.0/
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
