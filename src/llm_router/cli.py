@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import argparse
 from dataclasses import asdict
 import getpass
@@ -11,6 +12,7 @@ import httpx
 import uvicorn
 
 from .api import build_app
+from .service import RouterExecutionService
 from .settings import (
     DEFAULT_PROVIDER_TEMPLATES,
     ProviderEndpoint,
@@ -41,6 +43,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     auth = sub.add_parser("auth", help="Open browser authentication pages for providers")
     auth.add_argument("--provider", type=str, default="all", help="Provider id or 'all'")
+
+    test = sub.add_parser("test", help="Send a test prompt and inspect routed provider/model")
+    test.add_argument("prompt", nargs="?", default=None, help="Prompt text to test")
+    test.add_argument("--model", type=str, default="auto", help="Model hint to pass to router")
+    test.add_argument("--temperature", type=float, default=None, help="Optional temperature")
+    test.add_argument("--max-tokens", type=int, default=None, help="Optional max tokens")
     return parser
 
 
@@ -72,6 +80,7 @@ ANSI_RED = "\033[91m"
 ANSI_YELLOW = "\033[93m"
 ANSI_CYAN = "\033[96m"
 ANSI_MAGENTA = "\033[95m"
+ANSI_INVERT = "\033[7m"
 
 
 def _interactive_setup_menu(settings) -> bool:
@@ -107,12 +116,13 @@ def _runtime_settings_menu(settings) -> None:
     while True:
         client_key_set = bool(str(settings.runtime.client_api_key or "").strip())
         require_key = bool(settings.runtime.require_client_api_key)
-        key_ok = (not require_key) or client_key_set
+        key_status = _status_marker(client_key_set)
+        key_requirement = _color_text("required", ANSI_YELLOW) if require_key else _color_text("optional", ANSI_CYAN)
         options = [
             f"Host                 {settings.runtime.host} {_status_marker(bool(str(settings.runtime.host).strip()))}",
             f"Port                 {settings.runtime.port} {_status_marker(settings.runtime.port > 0)}",
             f"Require Client Key   {_toggle_text(require_key)}",
-            f"Client API Key       {_masked_value(settings.runtime.client_api_key)} {_status_marker(key_ok)}",
+            f"Client API Key       {_masked_value(settings.runtime.client_api_key)} {key_status} ({key_requirement})",
             f"Router Config Path   {settings.runtime.router_config_path} {_status_marker(bool(str(settings.runtime.router_config_path).strip()))}",
             f"Append Router Stamp  {_toggle_text(bool(settings.runtime.append_router_stamp))}",
             "Back",
@@ -174,14 +184,17 @@ def _provider_settings_menu(settings) -> None:
 
 def _edit_provider_menu(provider: ProviderEndpoint) -> None:
     while True:
-        key_set = bool(provider_api_key(provider))
+        env_name = str(provider.api_key_env or "").strip()
+        env_present = bool(env_name and os.environ.get(env_name))
+        key_resolved = bool(provider_api_key(provider))
         options = [
             f"Enabled              {_toggle_text(provider.enabled)}",
             f"Base URL             {provider.base_url or '-'} {_status_marker(bool(str(provider.base_url).strip()))}",
             f"Default Model        {provider.default_model or '-'} {_status_marker(bool(str(provider.default_model or '').strip()))}",
-            f"API Key Env Var      {provider.api_key_env or '-'} {_status_marker(bool(str(provider.api_key_env or '').strip()))}",
-            f"API Key/Token        {_masked_value(provider.api_key)} {_status_marker(key_set)}",
-            "Open Auth Page",
+            f"API Key Env Var      {provider.api_key_env or '-'} {_status_marker(env_present)}",
+            f"API Key/Token        {_masked_value(provider.api_key)} {_status_marker(bool(provider.api_key))}",
+            f"Resolved Auth        {_color_text('AVAILABLE', ANSI_GREEN) if key_resolved else _color_text('MISSING', ANSI_RED)}",
+            "Auth Shortcuts",
             "Back",
         ]
         choice = _arrow_menu(
@@ -189,7 +202,7 @@ def _edit_provider_menu(provider: ProviderEndpoint) -> None:
             subtitle=f"kind={provider.kind}",
             options=options,
         )
-        if choice is None or choice == 6:
+        if choice is None or choice == 7:
             return
         if choice == 0:
             provider.enabled = not provider.enabled
@@ -210,12 +223,50 @@ def _edit_provider_menu(provider: ProviderEndpoint) -> None:
             if entered is not None:
                 provider.api_key = entered or None
         elif choice == 5:
-            auth_url = provider.auth_url or _default_auth_url(provider.id)
-            if auth_url:
-                webbrowser.open(auth_url)
-                _pause_message(f"Opened auth page for {provider.id}. Press Enter to continue.")
+            _pause_message("Resolved auth is informational only. Press Enter to continue.")
+        elif choice == 6:
+            _provider_auth_shortcuts_menu(provider)
+
+
+def _provider_auth_shortcuts_menu(provider: ProviderEndpoint) -> None:
+    options = [
+        "Open provider auth page",
+        "Open OpenAI API keys",
+        "Open GitHub token page (Codex/Copilot)",
+        "Open Anthropic keys",
+        "Open Google AI Studio keys",
+        "Open OpenRouter keys",
+        "Back",
+    ]
+    while True:
+        choice = _arrow_menu(
+            title=f"AUTH SHORTCUTS // {provider.id.upper()}",
+            subtitle="Provider auth quick links",
+            options=options,
+        )
+        if choice is None or choice == 6:
+            return
+
+        if choice == 0:
+            url = provider.auth_url or _default_auth_url(provider.id)
+            if url:
+                webbrowser.open(url)
+                _pause_message(f"Opened {url}. Press Enter to continue.")
             else:
-                _pause_message(f"No auth URL configured for {provider.id}. Press Enter to continue.")
+                _pause_message("No auth URL configured. Press Enter to continue.")
+            continue
+
+        url_map = {
+            1: "https://platform.openai.com/api-keys",
+            2: "https://github.com/settings/tokens",
+            3: "https://console.anthropic.com/settings/keys",
+            4: "https://aistudio.google.com/apikey",
+            5: "https://openrouter.ai/keys",
+        }
+        url = url_map.get(choice)
+        if url:
+            webbrowser.open(url)
+            _pause_message(f"Opened {url}. Press Enter to continue.")
 
 
 def _runtime_ready(settings) -> bool:
@@ -277,14 +328,16 @@ def _arrow_menu(title: str, subtitle: str, options: list[str]) -> int | None:
         print(_color_text("#############################################", ANSI_MAGENTA))
         print(_color_text(title, ANSI_CYAN))
         print(_color_text(subtitle, ANSI_YELLOW))
+        print(_color_text(f"Selection: {index + 1}/{len(options)}", ANSI_YELLOW))
         print()
         for i, option in enumerate(options):
             if i == index:
-                print(_color_text(f">> {option}", ANSI_CYAN))
+                selected = f"[*] {option}"
+                print(_color_text(f"{ANSI_INVERT}{selected}{ANSI_RESET}", ANSI_CYAN))
             else:
-                print(f"   {option}")
+                print(f"[ ] {option}")
         print()
-        print(_color_text("UP/DOWN = navigate | ENTER = select | ESC = back", ANSI_YELLOW))
+        print(_color_text("UP/DOWN or W/S = navigate | ENTER = select | ESC = back", ANSI_YELLOW))
 
         key = _read_menu_key()
         if key == "up":
@@ -306,6 +359,14 @@ def _read_menu_key() -> str:
             if char in {"\r", "\n"}:
                 return "enter"
             if char == "\x1b":
+                if msvcrt.kbhit():
+                    nxt = msvcrt.getwch()
+                    if nxt == "[" and msvcrt.kbhit():
+                        final = msvcrt.getwch()
+                        if final == "A":
+                            return "up"
+                        if final == "B":
+                            return "down"
                 return "escape"
             if char in {"\x00", "\xe0"}:
                 code = msvcrt.getwch()
@@ -378,6 +439,54 @@ def _prompt_secret(label: str, current: str | None) -> str | None:
 def _pause_message(message: str) -> None:
     print(message)
     input("")
+
+
+def cmd_test(
+    config_path: Path,
+    prompt: str | None,
+    model: str,
+    temperature: float | None,
+    max_tokens: int | None,
+) -> int:
+    settings = load_settings(config_path)
+    settings.providers = _merge_provider_templates(settings.providers)
+
+    prompt_text = str(prompt or "").strip()
+    if not prompt_text:
+        prompt_text = input("Enter prompt to test route: ").strip()
+    if not prompt_text:
+        print("No prompt provided.")
+        return 1
+
+    service = RouterExecutionService(settings=settings)
+    messages = [{"role": "user", "content": prompt_text}]
+
+    try:
+        result = asyncio.run(
+            service.run_completion(
+                prompt_text=prompt_text,
+                messages=messages,
+                client_model_hint=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"Test failed: {exc}")
+        return 1
+
+    print("LLM Router Test Result")
+    print("----------------------")
+    print(f"Provider: {result.provider}")
+    print(f"Endpoint: {result.endpoint_id}")
+    print(f"Model: {result.model}")
+    if result.failures:
+        print("Fallbacks:")
+        for failure in result.failures:
+            print(f"- {failure.route_provider}/{failure.model} -> {failure.reason}")
+    print("Reply:")
+    print(result.content)
+    return 0
 
 
 def cmd_status(config_path: Path) -> int:
@@ -556,6 +665,14 @@ def main() -> int:
         return cmd_doctor(args.config, probe_network=bool(args.probe_network))
     if args.command == "auth":
         return cmd_auth(args.config, provider=args.provider)
+    if args.command == "test":
+        return cmd_test(
+            args.config,
+            prompt=args.prompt,
+            model=args.model,
+            temperature=args.temperature,
+            max_tokens=args.max_tokens,
+        )
 
     parser.print_help()
     return 1
