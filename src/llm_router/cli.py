@@ -460,19 +460,31 @@ def _openai_codex_reauth_flow(endpoint: ProviderEndpoint) -> None:
             return
 
     if _command_exists("codex"):
-        print("Launching Codex CLI auth flow...\n")
+        if _codex_login_active():
+            _pause_message("OpenAI Codex is already logged in. Press Enter to continue.")
+            return
+
+        print("Launching Codex CLI browser login flow...\n")
+        try:
+            result = subprocess.run(["codex", "login"], check=False)
+        except Exception:
+            result = None
+
+        if (result is not None and result.returncode == 0) or _codex_login_active():
+            _pause_message("OpenAI Codex auth detected. Press Enter to continue.")
+            return
+
+        print("Browser login did not complete. Trying device-code auth...\n")
         try:
             result = subprocess.run(["codex", "login", "--device-auth"], check=False)
         except Exception:
             result = None
 
-        if result is not None and result.returncode == 0:
+        if (result is not None and result.returncode == 0) or _codex_login_active():
             _pause_message("OpenAI Codex auth detected. Press Enter to continue.")
             return
-        if _codex_login_active():
-            _pause_message("OpenAI Codex is already logged in. Press Enter to continue.")
-            return
-        _pause_message("Codex CLI login did not complete successfully. Press Enter for fallback options.")
+
+        _pause_message("Codex CLI login did not complete successfully. Check codex-login.log if needed, then press Enter for fallback options.")
     else:
         _pause_message("Codex CLI is not installed, so device-code login cannot be generated here. Press Enter for fallback options.")
 
@@ -496,6 +508,29 @@ def _github_copilot_reauth_flow(endpoint: ProviderEndpoint) -> None:
     print("Signing in to GitHub Copilot...")
     print("(LLM Router creates its own session - won't affect VS Code sign-in)\n")
 
+    if not _copilot_cli_available():
+        print("GitHub Copilot CLI is not installed.\n")
+        print("  1. Install GitHub Copilot CLI now")
+        print("  2. Continue with GitHub CLI / token fallback")
+        print("  3. Cancel")
+        choice = input("\n  Choice [1/2/3]: ").strip()
+        if choice == "1":
+            installed = _install_github_copilot_cli()
+            if not installed:
+                _pause_message("GitHub Copilot CLI install failed. Press Enter for fallback options.")
+        elif choice == "3":
+            return
+
+    if _copilot_cli_available():
+        print("Launching GitHub Copilot CLI login flow...\n")
+        try:
+            subprocess.run(["copilot", "login"], check=False)
+        except Exception:
+            pass
+        if provider_api_key(endpoint):
+            _pause_message("GitHub auth detected. Press Enter to continue.")
+            return
+
     if not _command_exists("gh"):
         print("GitHub CLI (gh) is not installed.\n")
         print("  1. Install GitHub CLI now")
@@ -517,6 +552,9 @@ def _github_copilot_reauth_flow(endpoint: ProviderEndpoint) -> None:
             subprocess.run(["gh", "auth", "login", "-w"], check=False)
         except Exception:
             pass
+        gh_token = _gh_auth_token_cli()
+        if gh_token:
+            endpoint.api_key = gh_token
         if provider_api_key(endpoint):
             _pause_message("GitHub auth detected via gh auth token. Press Enter to continue.")
             return
@@ -532,6 +570,23 @@ def _github_copilot_reauth_flow(endpoint: ProviderEndpoint) -> None:
 
 def _command_exists(command: str) -> bool:
     return shutil.which(command) is not None
+
+
+def _copilot_cli_available() -> bool:
+    if not _command_exists("copilot"):
+        return False
+    try:
+        result = subprocess.run(
+            ["copilot", "--version"],
+            input="n\n",
+            text=True,
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
+    except Exception:
+        return False
+    return result.returncode == 0
 
 
 def _codex_login_active() -> bool:
@@ -551,6 +606,18 @@ def _install_openai_codex_cli() -> bool:
     print("Installing Codex CLI with npm...\n")
     try:
         result = subprocess.run(["npm", "install", "-g", "@openai/codex"], check=False)
+    except Exception:
+        return False
+    return result.returncode == 0
+
+
+def _install_github_copilot_cli() -> bool:
+    if not _command_exists("npm"):
+        print("npm is required to install GitHub Copilot CLI but was not found.")
+        return False
+    print("Installing GitHub Copilot CLI with npm...\n")
+    try:
+        result = subprocess.run(["npm", "install", "-g", "@github/copilot"], check=False)
     except Exception:
         return False
     return result.returncode == 0
@@ -586,6 +653,19 @@ def _install_github_cli() -> bool:
 
     print("Automatic GitHub CLI installation is not supported on this OS/shell.")
     return False
+
+
+def _gh_auth_token_cli() -> str | None:
+    if not _command_exists("gh"):
+        return None
+    try:
+        proc = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, check=False)
+    except Exception:
+        return None
+    if proc.returncode != 0:
+        return None
+    token = str(proc.stdout or "").strip()
+    return token or None
 
 
 def _runtime_ready(settings) -> bool:

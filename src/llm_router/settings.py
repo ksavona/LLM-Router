@@ -267,6 +267,10 @@ def provider_api_key(provider: ProviderEndpoint) -> str | None:
     provider_id = str(provider.id or "").strip().lower()
     auth_mode = str(provider.auth_mode or "").strip().lower()
     if provider_id in {"github_models", "github_copilot"} or "gh" in auth_mode or "copilot" in provider_id:
+        for env_name in ("COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"):
+            token = str(os.environ.get(env_name) or "").strip()
+            if token:
+                return token
         token = _gh_auth_token()
         if token:
             return token
