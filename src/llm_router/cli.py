@@ -462,12 +462,15 @@ def _openai_codex_reauth_flow(endpoint: ProviderEndpoint) -> None:
     if _command_exists("codex"):
         print("Launching Codex CLI auth flow...\n")
         try:
-            result = subprocess.run(["codex", "auth", "login"], check=False)
+            result = subprocess.run(["codex", "login", "--device-auth"], check=False)
         except Exception:
             result = None
 
         if result is not None and result.returncode == 0:
             _pause_message("OpenAI Codex auth detected. Press Enter to continue.")
+            return
+        if _codex_login_active():
+            _pause_message("OpenAI Codex is already logged in. Press Enter to continue.")
             return
         _pause_message("Codex CLI login did not complete successfully. Press Enter for fallback options.")
     else:
@@ -529,6 +532,16 @@ def _github_copilot_reauth_flow(endpoint: ProviderEndpoint) -> None:
 
 def _command_exists(command: str) -> bool:
     return shutil.which(command) is not None
+
+
+def _codex_login_active() -> bool:
+    if not _command_exists("codex"):
+        return False
+    try:
+        result = subprocess.run(["codex", "login", "status"], check=False)
+    except Exception:
+        return False
+    return result.returncode == 0
 
 
 def _install_openai_codex_cli() -> bool:
