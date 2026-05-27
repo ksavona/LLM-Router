@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import webbrowser
 
 import httpx
@@ -443,6 +444,21 @@ def _openai_codex_reauth_flow(endpoint: ProviderEndpoint) -> None:
     print("Signing in to OpenAI Codex...")
     print("(LLM Router creates its own session - won't affect Codex CLI or VS Code)\n")
 
+    if not _command_exists("codex"):
+        print("Codex CLI is not installed.\n")
+        print("  1. Install Codex CLI now")
+        print("  2. Continue with API key fallback")
+        print("  3. Cancel")
+        choice = input("\n  Choice [1/2/3]: ").strip()
+        if choice == "1":
+            installed = _install_openai_codex_cli()
+            if not installed:
+                _pause_message("Codex CLI install failed. Press Enter for fallback options.")
+            elif not _command_exists("codex"):
+                _pause_message("Codex CLI installed but not yet on PATH in this terminal. Open a new terminal or continue with fallback.")
+        elif choice == "3":
+            return
+
     if _command_exists("codex"):
         print("Launching Codex CLI auth flow...\n")
         try:
@@ -477,6 +493,21 @@ def _github_copilot_reauth_flow(endpoint: ProviderEndpoint) -> None:
     print("Signing in to GitHub Copilot...")
     print("(LLM Router creates its own session - won't affect VS Code sign-in)\n")
 
+    if not _command_exists("gh"):
+        print("GitHub CLI (gh) is not installed.\n")
+        print("  1. Install GitHub CLI now")
+        print("  2. Continue with token fallback")
+        print("  3. Cancel")
+        choice = input("\n  Choice [1/2/3]: ").strip()
+        if choice == "1":
+            installed = _install_github_cli()
+            if not installed:
+                _pause_message("GitHub CLI install failed. Press Enter for fallback options.")
+            elif not _command_exists("gh"):
+                _pause_message("GitHub CLI installed but not yet on PATH in this terminal. Open a new terminal or continue with fallback.")
+        elif choice == "3":
+            return
+
     if _command_exists("gh"):
         print("Launching GitHub CLI auth flow in browser...\n")
         try:
@@ -498,6 +529,50 @@ def _github_copilot_reauth_flow(endpoint: ProviderEndpoint) -> None:
 
 def _command_exists(command: str) -> bool:
     return shutil.which(command) is not None
+
+
+def _install_openai_codex_cli() -> bool:
+    if not _command_exists("npm"):
+        print("npm is required to install Codex CLI but was not found.")
+        return False
+    print("Installing Codex CLI with npm...\n")
+    try:
+        result = subprocess.run(["npm", "install", "-g", "@openai/codex"], check=False)
+    except Exception:
+        return False
+    return result.returncode == 0
+
+
+def _install_github_cli() -> bool:
+    print("Installing GitHub CLI...\n")
+    try:
+        if os.name == "nt" and _command_exists("winget"):
+            result = subprocess.run(
+                [
+                    "winget",
+                    "install",
+                    "--id",
+                    "GitHub.cli",
+                    "-e",
+                    "--accept-package-agreements",
+                    "--accept-source-agreements",
+                ],
+                check=False,
+            )
+            return result.returncode == 0
+
+        if sys.platform == "darwin" and _command_exists("brew"):
+            result = subprocess.run(["brew", "install", "gh"], check=False)
+            return result.returncode == 0
+
+        if sys.platform.startswith("linux") and _command_exists("apt-get"):
+            result = subprocess.run(["sudo", "apt-get", "install", "-y", "gh"], check=False)
+            return result.returncode == 0
+    except Exception:
+        return False
+
+    print("Automatic GitHub CLI installation is not supported on this OS/shell.")
+    return False
 
 
 def _runtime_ready(settings) -> bool:
