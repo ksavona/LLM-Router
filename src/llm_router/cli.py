@@ -464,9 +464,18 @@ def _openai_codex_reauth_flow(endpoint: ProviderEndpoint) -> None:
             _pause_message("OpenAI Codex is already logged in. Press Enter to continue.")
             return
 
-        print("Launching Codex CLI browser login flow...\n")
+        print("Launch method:")
+        print("  1. Browser login (recommended)")
+        print("  2. Device-code login")
+        print("  3. Cancel")
+        launch_choice = input("\n  Choice [1/2/3]: ").strip()
+        if launch_choice == "3":
+            return
+
+        cmd = ["codex", "login"] if launch_choice == "1" else ["codex", "login", "--device-auth"]
+        print("\nLaunching Codex CLI login flow...\n")
         try:
-            result = subprocess.run(["codex", "login"], check=False)
+            result = _run_command(cmd, check=False)
         except Exception:
             result = None
 
@@ -474,17 +483,24 @@ def _openai_codex_reauth_flow(endpoint: ProviderEndpoint) -> None:
             _pause_message("OpenAI Codex auth detected. Press Enter to continue.")
             return
 
-        print("Browser login did not complete. Trying device-code auth...\n")
-        try:
-            result = subprocess.run(["codex", "login", "--device-auth"], check=False)
-        except Exception:
-            result = None
-
-        if (result is not None and result.returncode == 0) or _codex_login_active():
-            _pause_message("OpenAI Codex auth detected. Press Enter to continue.")
+        print("Codex CLI login did not complete successfully.")
+        print("Tip: run `codex login status` and check codex-login.log for diagnostics.")
+        print("\nNext step:")
+        print("  1. Try the other login method")
+        print("  2. Continue to API key fallback")
+        print("  3. Cancel")
+        retry_choice = input("\n  Choice [1/2/3]: ").strip()
+        if retry_choice == "1":
+            alt_cmd = ["codex", "login", "--device-auth"] if cmd == ["codex", "login"] else ["codex", "login"]
+            try:
+                result = _run_command(alt_cmd, check=False)
+            except Exception:
+                result = None
+            if (result is not None and result.returncode == 0) or _codex_login_active():
+                _pause_message("OpenAI Codex auth detected. Press Enter to continue.")
+                return
+        elif retry_choice == "3":
             return
-
-        _pause_message("Codex CLI login did not complete successfully. Check codex-login.log if needed, then press Enter for fallback options.")
     else:
         _pause_message("Codex CLI is not installed, so device-code login cannot be generated here. Press Enter for fallback options.")
 
@@ -524,7 +540,7 @@ def _github_copilot_reauth_flow(endpoint: ProviderEndpoint) -> None:
     if _copilot_cli_available():
         print("Launching GitHub Copilot CLI login flow...\n")
         try:
-            subprocess.run(["copilot", "login"], check=False)
+            _run_command(["copilot", "login"], check=False)
         except Exception:
             pass
         if provider_api_key(endpoint):
@@ -549,7 +565,7 @@ def _github_copilot_reauth_flow(endpoint: ProviderEndpoint) -> None:
     if _command_exists("gh"):
         print("Launching GitHub CLI auth flow in browser...\n")
         try:
-            subprocess.run(["gh", "auth", "login", "-w"], check=False)
+            _run_command(["gh", "auth", "login", "-w"], check=False)
         except Exception:
             pass
         gh_token = _gh_auth_token_cli()
@@ -569,34 +585,42 @@ def _github_copilot_reauth_flow(endpoint: ProviderEndpoint) -> None:
 
 
 def _command_exists(command: str) -> bool:
-    return shutil.which(command) is not None
+    return _resolve_command(command) is not None
+
+
+def _resolve_command(command: str) -> str | None:
+    candidates = [command]
+    if os.name == "nt":
+        candidates.extend([f"{command}.cmd", f"{command}.bat", f"{command}.exe"])
+    for candidate in candidates:
+        path = shutil.which(candidate)
+        if path:
+            return path
+    return None
+
+
+def _run_command(args: list[str], **kwargs):
+    if not args:
+        raise ValueError("args cannot be empty")
+    executable = _resolve_command(args[0]) or args[0]
+    return subprocess.run([executable, *args[1:]], **kwargs)
 
 
 def _copilot_cli_available() -> bool:
-    if not _command_exists("copilot"):
-        return False
-    try:
-        result = subprocess.run(
-            ["copilot", "--version"],
-            input="n\n",
-            text=True,
-            capture_output=True,
-            timeout=5,
-            check=False,
-        )
-    except Exception:
-        return False
-    return result.returncode == 0
+    return _command_exists("copilot")
 
 
 def _codex_login_active() -> bool:
     if not _command_exists("codex"):
         return False
     try:
-        result = subprocess.run(["codex", "login", "status"], check=False)
+        result = _run_command(["codex", "login", "status"], capture_output=True, text=True, check=False)
     except Exception:
         return False
-    return result.returncode == 0
+    output = f"{result.stdout or ''}\n{result.stderr or ''}".lower()
+    if result.returncode == 0:
+        return True
+    return "logged in" in output
 
 
 def _install_openai_codex_cli() -> bool:
@@ -605,7 +629,7 @@ def _install_openai_codex_cli() -> bool:
         return False
     print("Installing Codex CLI with npm...\n")
     try:
-        result = subprocess.run(["npm", "install", "-g", "@openai/codex"], check=False)
+        result = _run_command(["npm", "install", "-g", "@openai/codex"], check=False)
     except Exception:
         return False
     return result.returncode == 0
@@ -617,7 +641,7 @@ def _install_github_copilot_cli() -> bool:
         return False
     print("Installing GitHub Copilot CLI with npm...\n")
     try:
-        result = subprocess.run(["npm", "install", "-g", "@github/copilot"], check=False)
+        result = _run_command(["npm", "install", "-g", "@github/copilot"], check=False)
     except Exception:
         return False
     return result.returncode == 0
@@ -627,7 +651,7 @@ def _install_github_cli() -> bool:
     print("Installing GitHub CLI...\n")
     try:
         if os.name == "nt" and _command_exists("winget"):
-            result = subprocess.run(
+            result = _run_command(
                 [
                     "winget",
                     "install",
@@ -642,11 +666,11 @@ def _install_github_cli() -> bool:
             return result.returncode == 0
 
         if sys.platform == "darwin" and _command_exists("brew"):
-            result = subprocess.run(["brew", "install", "gh"], check=False)
+            result = _run_command(["brew", "install", "gh"], check=False)
             return result.returncode == 0
 
         if sys.platform.startswith("linux") and _command_exists("apt-get"):
-            result = subprocess.run(["sudo", "apt-get", "install", "-y", "gh"], check=False)
+            result = _run_command(["sudo", "apt-get", "install", "-y", "gh"], check=False)
             return result.returncode == 0
     except Exception:
         return False
@@ -659,7 +683,7 @@ def _gh_auth_token_cli() -> str | None:
     if not _command_exists("gh"):
         return None
     try:
-        proc = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, check=False)
+        proc = _run_command(["gh", "auth", "token"], capture_output=True, text=True, check=False)
     except Exception:
         return None
     if proc.returncode != 0:
