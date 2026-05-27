@@ -19,6 +19,7 @@ from .settings import (
     default_settings_path,
     load_settings,
     provider_api_key,
+    provider_requires_key,
     save_settings,
 )
 
@@ -83,6 +84,47 @@ ANSI_MAGENTA = "\033[95m"
 ANSI_INVERT = "\033[7m"
 
 
+PROVIDER_CATALOG: list[dict[str, str | None]] = [
+    {"name": "Nous Portal (Nous Research subscription)", "id": "nous_portal", "kind": "openai_compat", "base_url": "https://portal.nousresearch.com/api", "api_key_env": "NOUS_API_KEY", "auth_mode": "api_key", "auth_url": "https://portal.nousresearch.com", "default_model": "hermes-3"},
+    {"name": "OpenRouter (100+ models, pay-per-use)", "id": "openrouter", "kind": "openai_compat", "base_url": "https://openrouter.ai/api", "api_key_env": "OPENROUTER_API_KEY", "auth_mode": "api_key", "auth_url": "https://openrouter.ai/keys", "default_model": "openai/gpt-4.1-mini"},
+    {"name": "NovitaAI (AI-native cloud: Model API, Agent Sandbox, GPU Cloud)", "id": "novitaai", "kind": "openai_compat", "base_url": "https://api.novita.ai", "api_key_env": "NOVITA_API_KEY", "auth_mode": "api_key", "auth_url": "https://novita.ai", "default_model": "deepseek-v3"},
+    {"name": "LM Studio (local desktop app with built-in model server)", "id": "lm_studio", "kind": "openai_compat", "base_url": "http://127.0.0.1:1234", "api_key_env": None, "auth_mode": "local", "auth_url": "https://lmstudio.ai", "default_model": "local-model"},
+    {"name": "Anthropic (Claude models - API key or Claude Code)", "id": "anthropic", "kind": "anthropic", "base_url": "https://api.anthropic.com", "api_key_env": "ANTHROPIC_API_KEY", "auth_mode": "api_key", "auth_url": "https://console.anthropic.com/settings/keys", "default_model": "claude-3-5-sonnet-latest"},
+    {"name": "OpenAI Codex", "id": "openai_codex", "kind": "openai_compat", "base_url": "https://api.openai.com", "api_key_env": "OPENAI_API_KEY", "auth_mode": "oauth_or_api_key", "auth_url": "https://platform.openai.com", "default_model": "gpt-5-codex"},
+    {"name": "Qwen Cloud / DashScope Coding (Qwen + multi-provider)", "id": "qwen_dashscope", "kind": "openai_compat", "base_url": "https://dashscope.aliyuncs.com/compatible-mode", "api_key_env": "DASHSCOPE_API_KEY", "auth_mode": "api_key", "auth_url": "https://dashscope.console.aliyun.com", "default_model": "qwen-plus"},
+    {"name": "xAI Grok OAuth (SuperGrok Subscription)", "id": "xai_grok_oauth", "kind": "openai_compat", "base_url": "https://api.x.ai", "api_key_env": "XAI_API_KEY", "auth_mode": "oauth", "auth_url": "https://console.x.ai", "default_model": "grok-3-mini"},
+    {"name": "Xiaomi MiMo (MiMo-V2.5 and V2 models - pro, omni, flash)", "id": "xiaomi_mimo", "kind": "openai_compat", "base_url": "https://api.mimo.mi.com", "api_key_env": "MIMO_API_KEY", "auth_mode": "api_key", "auth_url": "https://mimo.mi.com", "default_model": "mimo-v2.5-pro"},
+    {"name": "Tencent TokenHub (Hy3 Preview - direct API via tokenhub.tencentmaas.com)", "id": "tencent_tokenhub", "kind": "openai_compat", "base_url": "https://tokenhub.tencentmaas.com", "api_key_env": "TENCENT_TOKENHUB_API_KEY", "auth_mode": "api_key", "auth_url": "https://tokenhub.tencentmaas.com", "default_model": "hy3-preview"},
+    {"name": "NVIDIA NIM (Nemotron models - build.nvidia.com or local NIM)", "id": "nvidia_nim", "kind": "openai_compat", "base_url": "https://integrate.api.nvidia.com", "api_key_env": "NVIDIA_API_KEY", "auth_mode": "api_key", "auth_url": "https://build.nvidia.com", "default_model": "nvidia/llama-3.1-nemotron-70b-instruct"},
+    {"name": "GitHub Copilot (uses GITHUB_TOKEN or gh auth token)", "id": "github_copilot", "kind": "openai_compat", "base_url": "https://models.inference.ai.azure.com", "api_key_env": "GITHUB_TOKEN", "auth_mode": "gh_or_token", "auth_url": "https://github.com/settings/tokens", "default_model": "gpt-4.1-mini"},
+    {"name": "GitHub Copilot ACP (spawns copilot --acp --stdio)", "id": "github_copilot_acp", "kind": "openai_compat", "base_url": "https://models.inference.ai.azure.com", "api_key_env": "GITHUB_TOKEN", "auth_mode": "gh_or_token", "auth_url": "https://github.com/settings/tokens", "default_model": "gpt-4.1-mini"},
+    {"name": "Hugging Face Inference Providers (20+ open models)", "id": "huggingface_inference", "kind": "openai_compat", "base_url": "https://router.huggingface.co", "api_key_env": "HF_TOKEN", "auth_mode": "token", "auth_url": "https://huggingface.co/settings/tokens", "default_model": "meta-llama/Llama-3.1-8B-Instruct"},
+    {"name": "Google AI Studio (Gemini models - native Gemini API)", "id": "google", "kind": "google", "base_url": "https://generativelanguage.googleapis.com", "api_key_env": "GOOGLE_API_KEY", "auth_mode": "api_key", "auth_url": "https://aistudio.google.com/apikey", "default_model": "gemini-2.5-pro"},
+    {"name": "Google Gemini via OAuth + Code Assist (free tier supported; no API key needed)", "id": "google_gemini_oauth", "kind": "google", "base_url": "https://generativelanguage.googleapis.com", "api_key_env": "GOOGLE_API_KEY", "auth_mode": "oauth", "auth_url": "https://aistudio.google.com", "default_model": "gemini-2.5-pro"},
+    {"name": "DeepSeek (DeepSeek-V3, R1, coder - direct API)", "id": "deepseek", "kind": "openai_compat", "base_url": "https://api.deepseek.com", "api_key_env": "DEEPSEEK_API_KEY", "auth_mode": "api_key", "auth_url": "https://platform.deepseek.com", "default_model": "deepseek-chat"},
+    {"name": "xAI (Grok models - direct API)", "id": "xai", "kind": "openai_compat", "base_url": "https://api.x.ai", "api_key_env": "XAI_API_KEY", "auth_mode": "api_key", "auth_url": "https://console.x.ai", "default_model": "grok-3-mini"},
+    {"name": "Z.AI / GLM (Zhipu AI direct API)", "id": "zai_glm", "kind": "openai_compat", "base_url": "https://open.bigmodel.cn/api/paas", "api_key_env": "ZHIPU_API_KEY", "auth_mode": "api_key", "auth_url": "https://open.bigmodel.cn", "default_model": "glm-4-plus"},
+    {"name": "Kimi Coding Plan (api.kimi.com) & Moonshot API", "id": "kimi_coding", "kind": "openai_compat", "base_url": "https://api.kimi.com", "api_key_env": "KIMI_API_KEY", "auth_mode": "api_key", "auth_url": "https://platform.moonshot.ai", "default_model": "kimi-k2"},
+    {"name": "Kimi / Moonshot China (Moonshot CN direct API)", "id": "moonshot_cn", "kind": "openai_compat", "base_url": "https://api.moonshot.cn", "api_key_env": "MOONSHOT_API_KEY", "auth_mode": "api_key", "auth_url": "https://platform.moonshot.cn", "default_model": "moonshot-v1-8k"},
+    {"name": "StepFun Step Plan (agent/coding models via Step Plan API)", "id": "stepfun", "kind": "openai_compat", "base_url": "https://api.stepfun.com", "api_key_env": "STEPFUN_API_KEY", "auth_mode": "api_key", "auth_url": "https://platform.stepfun.com", "default_model": "step-2-mini"},
+    {"name": "MiniMax (global direct API)", "id": "minimax", "kind": "openai_compat", "base_url": "https://api.minimax.io", "api_key_env": "MINIMAX_API_KEY", "auth_mode": "api_key", "auth_url": "https://platform.minimax.io", "default_model": "abab6.5s-chat"},
+    {"name": "MiniMax via OAuth browser login (Coding Plan, minimax.io)", "id": "minimax_oauth", "kind": "openai_compat", "base_url": "https://api.minimax.io", "api_key_env": "MINIMAX_API_KEY", "auth_mode": "oauth", "auth_url": "https://platform.minimax.io", "default_model": "abab6.5s-chat"},
+    {"name": "MiniMax China (domestic direct API)", "id": "minimax_cn", "kind": "openai_compat", "base_url": "https://api.minimaxi.com", "api_key_env": "MINIMAX_CN_API_KEY", "auth_mode": "api_key", "auth_url": "https://api.minimaxi.com", "default_model": "abab6.5s-chat"},
+    {"name": "Ollama Cloud (cloud-hosted open models - ollama.com)", "id": "ollama_cloud", "kind": "openai_compat", "base_url": "https://ollama.com/api", "api_key_env": "OLLAMA_API_KEY", "auth_mode": "api_key", "auth_url": "https://ollama.com", "default_model": "llama3.1"},
+    {"name": "Arcee AI (Trinity models - direct API)", "id": "arcee_ai", "kind": "openai_compat", "base_url": "https://api.arcee.ai", "api_key_env": "ARCEE_API_KEY", "auth_mode": "api_key", "auth_url": "https://app.arcee.ai", "default_model": "arcee-trinity"},
+    {"name": "GMI Cloud (multi-model direct API)", "id": "gmi_cloud", "kind": "openai_compat", "base_url": "https://api.gmicloud.ai", "api_key_env": "GMI_API_KEY", "auth_mode": "api_key", "auth_url": "https://gmicloud.ai", "default_model": "gmi-auto"},
+    {"name": "Kilo Code (Kilo Gateway API)", "id": "kilo_code", "kind": "openai_compat", "base_url": "https://api.kilo-code.com", "api_key_env": "KILO_API_KEY", "auth_mode": "api_key", "auth_url": "https://kilo-code.com", "default_model": "kilo-coder"},
+    {"name": "OpenCode Zen (35+ curated models, pay-as-you-go)", "id": "opencode_zen", "kind": "openai_compat", "base_url": "https://api.opencode.ai", "api_key_env": "OPENCODE_API_KEY", "auth_mode": "api_key", "auth_url": "https://opencode.ai", "default_model": "zen-auto"},
+    {"name": "OpenCode Go (open models, $10/month subscription)", "id": "opencode_go", "kind": "openai_compat", "base_url": "https://api.opencode.ai", "api_key_env": "OPENCODE_API_KEY", "auth_mode": "subscription", "auth_url": "https://opencode.ai", "default_model": "go-open"},
+    {"name": "AWS Bedrock (Claude, Nova, Llama, DeepSeek - IAM or API key)", "id": "aws_bedrock", "kind": "openai_compat", "base_url": "https://bedrock-runtime.us-east-1.amazonaws.com", "api_key_env": "AWS_BEARER_TOKEN_BEDROCK", "auth_mode": "iam_or_api_key", "auth_url": "https://console.aws.amazon.com/bedrock", "default_model": "anthropic.claude-3-5-sonnet-20241022-v2:0"},
+    {"name": "Azure Foundry (OpenAI-style or Anthropic-style endpoint - your Azure AI deployment)", "id": "azure_foundry", "kind": "openai_compat", "base_url": "https://YOUR-FOUNDRY-ENDPOINT", "api_key_env": "AZURE_FOUNDRY_API_KEY", "auth_mode": "api_key", "auth_url": "https://ai.azure.com", "default_model": "gpt-4.1-mini"},
+    {"name": "Vercel AI Gateway", "id": "vercel_ai_gateway", "kind": "openai_compat", "base_url": "https://ai-gateway.vercel.sh/v1", "api_key_env": "VERCEL_AI_GATEWAY_API_KEY", "auth_mode": "api_key", "auth_url": "https://vercel.com/dashboard", "default_model": "openai/gpt-4.1-mini"},
+    {"name": "Qwen OAuth (reuses local Qwen CLI login)", "id": "qwen_oauth", "kind": "openai_compat", "base_url": "https://dashscope.aliyuncs.com/compatible-mode", "api_key_env": "DASHSCOPE_API_KEY", "auth_mode": "oauth", "auth_url": "https://dashscope.console.aliyun.com", "default_model": "qwen-plus"},
+    {"name": "Alibaba Cloud Coding Plan - dedicated coding tier", "id": "alibaba_coding_plan", "kind": "openai_compat", "base_url": "https://dashscope.aliyuncs.com/compatible-mode", "api_key_env": "DASHSCOPE_API_KEY", "auth_mode": "api_key", "auth_url": "https://dashscope.console.aliyun.com", "default_model": "qwen-coder-plus"},
+    {"name": "custom (direct API)", "id": "custom", "kind": "openai_compat", "base_url": "https://api.example.com", "api_key_env": "CUSTOM_API_KEY", "auth_mode": "api_key", "auth_url": None, "default_model": "custom-model"},
+]
+
+
 def _interactive_setup_menu(settings) -> bool:
     while True:
         runtime_ready = _runtime_ready(settings)
@@ -91,6 +133,7 @@ def _interactive_setup_menu(settings) -> bool:
         options = [
             f"Runtime Settings      [{_status_tag(runtime_ready)}]",
             f"Provider Settings     [{_color_text(f'{providers_ready}/{providers_total} READY', ANSI_GREEN if providers_ready == providers_total else ANSI_YELLOW)}]",
+            "Provider Catalog",
             "Add Custom Provider",
             _color_text("Save and Exit", ANSI_GREEN),
             _color_text("Exit Without Saving", ANSI_RED),
@@ -100,15 +143,17 @@ def _interactive_setup_menu(settings) -> bool:
             subtitle="Hack mode active - arrow keys navigate, Enter selects",
             options=options,
         )
-        if choice is None or choice == 4:
+        if choice is None or choice == 5:
             return False
         if choice == 0:
             _runtime_settings_menu(settings)
         elif choice == 1:
             _provider_settings_menu(settings)
         elif choice == 2:
-            settings.providers.append(_prompt_custom_provider())
+            _provider_catalog_menu(settings)
         elif choice == 3:
+            settings.providers.append(_prompt_custom_provider())
+        elif choice == 4:
             return True
 
 
@@ -170,6 +215,7 @@ def _provider_settings_menu(settings) -> None:
             status = _status_marker(ready)
             enabled = _color_text("ENABLED", ANSI_GREEN) if provider.enabled else _color_text("DISABLED", ANSI_RED)
             options.append(f"{provider.id:<16} {enabled}  {status}")
+        options.append("Add from catalog")
         options.append("Back")
 
         choice = _arrow_menu(
@@ -179,6 +225,9 @@ def _provider_settings_menu(settings) -> None:
         )
         if choice is None or choice == len(options) - 1:
             return
+        if choice == len(options) - 2:
+            _provider_catalog_menu(settings)
+            continue
         _edit_provider_menu(providers[choice])
 
 
@@ -269,6 +318,115 @@ def _provider_auth_shortcuts_menu(provider: ProviderEndpoint) -> None:
             _pause_message(f"Opened {url}. Press Enter to continue.")
 
 
+def _provider_catalog_menu(settings) -> None:
+    while True:
+        current_id = _active_provider_id(settings.providers)
+        options: list[str] = []
+        for profile in PROVIDER_CATALOG:
+            pid = str(profile.get("id") or "")
+            marker = "(●)" if pid == current_id else "(○)"
+            options.append(f"{marker} {profile.get('name')}")
+        options.append("Back")
+
+        choice = _arrow_menu(
+            title="INFERENCE PROVIDER",
+            subtitle="Choose how to connect to your main chat model.",
+            options=options,
+        )
+        if choice is None or choice == len(options) - 1:
+            return
+
+        selected = PROVIDER_CATALOG[choice]
+        endpoint = _apply_provider_profile(settings.providers, selected)
+        _provider_credentials_wizard(selected, endpoint)
+
+
+def _active_provider_id(providers: list[ProviderEndpoint]) -> str:
+    for provider in providers:
+        if provider.enabled:
+            return str(provider.id)
+    return ""
+
+
+def _apply_provider_profile(providers: list[ProviderEndpoint], profile: dict[str, str | None]) -> ProviderEndpoint:
+    profile_id = str(profile.get("id") or "custom").strip().lower()
+    existing = None
+    for provider in providers:
+        if provider.id == profile_id:
+            existing = provider
+            break
+
+    if existing is None:
+        existing = ProviderEndpoint(id=profile_id, kind="openai_compat", base_url="", enabled=True)
+        providers.append(existing)
+
+    existing.kind = str(profile.get("kind") or "openai_compat")
+    existing.base_url = str(profile.get("base_url") or existing.base_url)
+    existing.api_key_env = str(profile.get("api_key_env")) if profile.get("api_key_env") else None
+    existing.auth_mode = str(profile.get("auth_mode") or existing.auth_mode)
+    existing.auth_url = str(profile.get("auth_url")) if profile.get("auth_url") else None
+    existing.default_model = str(profile.get("default_model")) if profile.get("default_model") else existing.default_model
+    existing.enabled = True
+    existing.metadata = dict(existing.metadata or {})
+    existing.metadata["display_name"] = str(profile.get("name") or existing.id)
+    return existing
+
+
+def _provider_credentials_wizard(profile: dict[str, str | None], endpoint: ProviderEndpoint) -> None:
+    profile_name = str(profile.get("name") or endpoint.id)
+    provider_id = str(profile.get("id") or endpoint.id).strip().lower()
+
+    _clear_screen()
+    print("┌─────────────────────────────────────────────────────────┐")
+    print("│             Hermes-style Provider Setup                │")
+    print("├─────────────────────────────────────────────────────────┤")
+    print("│  Configure provider credentials. Press Ctrl+C to exit. │")
+    print("└─────────────────────────────────────────────────────────┘")
+    print()
+    print(f"Current provider: {profile_name}")
+
+    if provider_id in {"openai_codex", "github_copilot", "github_copilot_acp"}:
+        has_creds = bool(provider_api_key(endpoint))
+        check = "✓" if has_creds else "✗"
+        label = "OpenAI Codex credentials" if provider_id == "openai_codex" else "GitHub Copilot credentials"
+        print()
+        print(f"{label}: {check}")
+        print()
+        print("  1. Use existing credentials")
+        print("  2. Reauthenticate (new OAuth login)")
+        print("  3. Cancel")
+        choice = input("\n  Choice [1/2/3]: ").strip()
+        if choice == "1":
+            return
+        if choice == "2":
+            if endpoint.auth_url:
+                webbrowser.open(endpoint.auth_url)
+            if provider_id == "openai_codex":
+                entered = getpass.getpass("Paste OPENAI_API_KEY (optional, Enter to skip): ").strip()
+                if entered:
+                    endpoint.api_key = entered
+            else:
+                entered = getpass.getpass("Paste GITHUB_TOKEN (optional, Enter to skip): ").strip()
+                if entered:
+                    endpoint.api_key = entered
+            return
+        return
+
+    print("\nCredential source:")
+    print("  1. API key/token")
+    print("  2. OAuth/browser sign-in")
+    print("  3. Skip")
+    choice = input("\n  Choice [1/2/3]: ").strip()
+    if choice == "1":
+        entered = getpass.getpass("Paste API key/token (optional, Enter to skip): ").strip()
+        if entered:
+            endpoint.api_key = entered
+    elif choice == "2":
+        if endpoint.auth_url:
+            webbrowser.open(endpoint.auth_url)
+            _pause_message("Browser opened for sign in. Press Enter when done.")
+
+
 def _runtime_ready(settings) -> bool:
     host_ok = bool(str(settings.runtime.host or "").strip())
     port_ok = int(settings.runtime.port) > 0
@@ -289,6 +447,8 @@ def _provider_ready(provider: ProviderEndpoint) -> bool:
         return False
     if not str(provider.base_url or "").strip():
         return False
+    if not provider_requires_key(provider):
+        return True
     return bool(provider_api_key(provider))
 
 
@@ -498,7 +658,7 @@ def cmd_status(config_path: Path) -> int:
     print(f"Router config path: {settings.runtime.router_config_path}")
     print("Providers:")
     for provider in settings.providers:
-        key_ok = bool(provider_api_key(provider))
+        key_ok = bool(provider_api_key(provider)) if provider_requires_key(provider) else True
         print(
             f"- {provider.id}: enabled={provider.enabled}, kind={provider.kind}, "
             f"base_url={provider.base_url}, model={provider.default_model or '-'}, "
@@ -583,7 +743,7 @@ def cmd_doctor(config_path: Path, probe_network: bool = False) -> int:
             status = "FAIL"
             message = "missing base_url"
             issues += 1
-        elif not provider_api_key(provider):
+        elif provider_requires_key(provider) and not provider_api_key(provider):
             status = "WARN"
             message = "missing API key/token"
 
