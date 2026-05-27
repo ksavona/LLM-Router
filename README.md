@@ -16,10 +16,7 @@ It accepts standard API requests, routes each prompt to the best model for cost/
 ## Quick Start
 
 ```bash
-python -m pip install -e .
-llm-router setup
-llm-router doctor
-llm-router serve
+git clone https://github.com/ksavona/LLM-Router.git && cd LLM-Router && python -m pip install -e .
 ```
 
 Default endpoint:
