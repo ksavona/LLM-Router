@@ -33,7 +33,7 @@ hermes-smart-router = "hermes_smart_router:register"
 
 [project.optional-dependencies]
 dev = [
-  "pytest>=8.0.0",
+  "pytest>=9.0.3",
   "ruff>=0.5.0"
 ]
 
